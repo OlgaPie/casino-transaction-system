@@ -37,7 +37,9 @@ The project follows the standard Go project layout to ensure a clean separation 
 │       └── main.go
 ├── internal/
 │   ├── consumer/
-│   │   └── handler.go
+│   │   ├── handler.go
+│   │   ├── handler_test.go
+│   │   └── handler_unit_test.go
 │   ├── handler/
 │   │   ├── transaction.go
 │   │   └── transaction_test.go
