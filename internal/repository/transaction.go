@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"github.com/OlgaPie/casino-transaction-system/internal/models"
 
@@ -37,7 +36,7 @@ func (r *postgresRepository) SaveTransaction(ctx context.Context, tx models.Tran
 
 func (r *postgresRepository) GetTransactionsByUserID(ctx context.Context, userID string, txType string) ([]models.Transaction, error) {
 	baseSQL := `SELECT id, user_id, transaction_type, amount, "timestamp" FROM transactions WHERE user_id = $1`
-	args := []interface{}{userID}
+	args := []any{userID}
 
 	if txType != "" {
 		baseSQL += " AND transaction_type = $2"
@@ -54,8 +53,7 @@ func (r *postgresRepository) GetTransactionsByUserID(ctx context.Context, userID
 	for rows.Next() {
 		var tx models.Transaction
 		if err := rows.Scan(&tx.ID, &tx.UserID, &tx.TransactionType, &tx.Amount, &tx.Timestamp); err != nil {
-			log.Printf("could not scan row: %v", err)
-			continue
+			return nil, fmt.Errorf("could not scan transaction row: %w", err)
 		}
 		transactions = append(transactions, tx)
 	}
@@ -69,7 +67,7 @@ func (r *postgresRepository) GetTransactionsByUserID(ctx context.Context, userID
 
 func (r *postgresRepository) GetAllTransactions(ctx context.Context, txType string) ([]models.Transaction, error) {
 	baseSQL := `SELECT id, user_id, transaction_type, amount, "timestamp" FROM transactions`
-	var args []interface{}
+	var args []any
 
 	if txType != "" {
 		baseSQL += " WHERE transaction_type = $1"
@@ -88,8 +86,7 @@ func (r *postgresRepository) GetAllTransactions(ctx context.Context, txType stri
 	for rows.Next() {
 		var tx models.Transaction
 		if err := rows.Scan(&tx.ID, &tx.UserID, &tx.TransactionType, &tx.Amount, &tx.Timestamp); err != nil {
-			log.Printf("could not scan row: %v", err)
-			continue
+			return nil, fmt.Errorf("could not scan transaction row: %w", err)
 		}
 		transactions = append(transactions, tx)
 	}

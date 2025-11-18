@@ -50,7 +50,7 @@ func TestConsumerHandler_ProcessMessages(t *testing.T) {
 
 	testTx := models.Transaction{
 		UserID:          "test-user-consumer",
-		TransactionType: "bet",
+		TransactionType: models.TransactionTypeBet,
 		Amount:          99.9,
 	}
 	message, err := json.Marshal(testTx)

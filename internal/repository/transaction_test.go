@@ -77,7 +77,7 @@ func TestPostgresRepository(t *testing.T) {
 	t.Run("should save and retrieve a transaction", func(t *testing.T) {
 		tx := models.Transaction{
 			UserID:          "user123",
-			TransactionType: "bet",
+			TransactionType: models.TransactionTypeBet,
 			Amount:          100.50,
 			Timestamp:       time.Now(),
 		}
@@ -96,8 +96,8 @@ func TestPostgresRepository(t *testing.T) {
 
 	// --- Тестируем фильтрацию ---
 	t.Run("should filter transactions by type", func(t *testing.T) {
-		winTx := models.Transaction{UserID: "user456", TransactionType: "win", Amount: 200, Timestamp: time.Now()}
-		betTx := models.Transaction{UserID: "user456", TransactionType: "bet", Amount: 50, Timestamp: time.Now()}
+		winTx := models.Transaction{UserID: "user456", TransactionType: models.TransactionTypeWin, Amount: 200, Timestamp: time.Now()}
+		betTx := models.Transaction{UserID: "user456", TransactionType: models.TransactionTypeBet, Amount: 50, Timestamp: time.Now()}
 
 		require.NoError(t, repo.SaveTransaction(ctx, winTx))
 		require.NoError(t, repo.SaveTransaction(ctx, betTx))
@@ -106,13 +106,13 @@ func TestPostgresRepository(t *testing.T) {
 		wins, err := repo.GetTransactionsByUserID(ctx, "user456", "win")
 		require.NoError(t, err)
 		require.Len(t, wins, 1)
-		assert.Equal(t, "win", wins[0].TransactionType)
+		assert.Equal(t, models.TransactionTypeWin, wins[0].TransactionType)
 
 		// Проверяем фильтр по "bet"
 		bets, err := repo.GetTransactionsByUserID(ctx, "user456", "bet")
 		require.NoError(t, err)
 		require.Len(t, bets, 1)
-		assert.Equal(t, "bet", bets[0].TransactionType)
+		assert.Equal(t, models.TransactionTypeBet, bets[0].TransactionType)
 	})
 
 	// --- Тестируем GetAllTransactions ---
