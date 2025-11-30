@@ -146,8 +146,8 @@ Check the logs from the `consumer` service (`docker-compose logs -f consumer`) t
 #### A Note on Coverage Metrics:
 The test coverage report provides several metrics. The most important one is the coverage for the core business logic located in the `internal` package.
 
-*  **Business Logic Coverage (`internal` package): ~89%**
-    - `internal/consumer`: **92.0%**
+*  **Business Logic Coverage (`internal` package): ~85.6%**
+    - `internal/consumer`: **81.8%**
     - `internal/handler`: **91.3%**
     - `internal/repository`: **83.7%**
 

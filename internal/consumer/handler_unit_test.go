@@ -17,12 +17,17 @@ type MockMessageReader struct {
 	mock.Mock
 }
 
-func (m *MockMessageReader) ReadMessage(ctx context.Context) (kafka.Message, error) {
+func (m *MockMessageReader) FetchMessage(ctx context.Context) (kafka.Message, error) {
 	args := m.Called(ctx)
 	if msg, ok := args.Get(0).(kafka.Message); ok {
 		return msg, args.Error(1)
 	}
 	return kafka.Message{}, args.Error(1)
+}
+
+func (m *MockMessageReader) CommitMessages(ctx context.Context, msgs ...kafka.Message) error {
+	args := m.Called(ctx, msgs)
+	return args.Error(0)
 }
 
 func TestConsumerHandler_ErrorScenarios(t *testing.T) {
@@ -33,8 +38,9 @@ func TestConsumerHandler_ErrorScenarios(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 
 		badMessage := kafka.Message{Value: []byte("not a json")}
-		mockReader.On("ReadMessage", mock.Anything).Return(badMessage, nil).Once()
-		mockReader.On("ReadMessage", mock.Anything).Return(kafka.Message{}, context.Canceled).Maybe() // Maybe() означает, что вызов может быть, а может и не быть
+		mockReader.On("FetchMessage", mock.Anything).Return(badMessage, nil).Once()
+		mockReader.On("CommitMessages", mock.Anything, mock.Anything).Return(nil).Once()
+		mockReader.On("FetchMessage", mock.Anything).Return(kafka.Message{}, context.Canceled).Maybe()
 
 		handler := NewHandler(mockReader, mockRepo)
 
@@ -56,8 +62,9 @@ func TestConsumerHandler_ErrorScenarios(t *testing.T) {
 		tx := models.Transaction{UserID: "u1", TransactionType: "refund", Amount: 100}
 		msgBytes, _ := json.Marshal(tx)
 		message := kafka.Message{Value: msgBytes}
-		mockReader.On("ReadMessage", mock.Anything).Return(message, nil).Once()
-		mockReader.On("ReadMessage", mock.Anything).Return(kafka.Message{}, context.Canceled).Maybe()
+		mockReader.On("FetchMessage", mock.Anything).Return(message, nil).Once()
+		mockReader.On("CommitMessages", mock.Anything, mock.Anything).Return(nil).Once()
+		mockReader.On("FetchMessage", mock.Anything).Return(kafka.Message{}, context.Canceled).Maybe()
 
 		handler := NewHandler(mockReader, mockRepo)
 
@@ -78,8 +85,9 @@ func TestConsumerHandler_ErrorScenarios(t *testing.T) {
 		tx := models.Transaction{UserID: "u1", TransactionType: "bet", Amount: -50}
 		msgBytes, _ := json.Marshal(tx)
 		message := kafka.Message{Value: msgBytes}
-		mockReader.On("ReadMessage", mock.Anything).Return(message, nil).Once()
-		mockReader.On("ReadMessage", mock.Anything).Return(kafka.Message{}, context.Canceled).Maybe()
+		mockReader.On("FetchMessage", mock.Anything).Return(message, nil).Once()
+		mockReader.On("CommitMessages", mock.Anything, mock.Anything).Return(nil).Once()
+		mockReader.On("FetchMessage", mock.Anything).Return(kafka.Message{}, context.Canceled).Maybe()
 
 		handler := NewHandler(mockReader, mockRepo)
 
@@ -92,7 +100,7 @@ func TestConsumerHandler_ErrorScenarios(t *testing.T) {
 	})
 
 	//  Тест 4: Ошибка сохранения в БД
-	t.Run("should log error when repository fails", func(t *testing.T) {
+	t.Run("should not commit offset when repository fails", func(t *testing.T) {
 		mockReader := new(MockMessageReader)
 		mockRepo := new(mocks.TransactionRepository)
 		ctx, cancel := context.WithCancel(context.Background())
@@ -100,8 +108,8 @@ func TestConsumerHandler_ErrorScenarios(t *testing.T) {
 		tx := models.Transaction{UserID: "u1", TransactionType: "win", Amount: 200}
 		msgBytes, _ := json.Marshal(tx)
 		message := kafka.Message{Value: msgBytes}
-		mockReader.On("ReadMessage", mock.Anything).Return(message, nil).Once()
-		mockReader.On("ReadMessage", mock.Anything).Return(kafka.Message{}, context.Canceled).Maybe()
+		mockReader.On("FetchMessage", mock.Anything).Return(message, nil).Once()
+		mockReader.On("FetchMessage", mock.Anything).Return(kafka.Message{}, context.Canceled).Maybe()
 
 		mockRepo.On("SaveTransaction", mock.Anything, mock.AnythingOfType("models.Transaction")).Return(errors.New("db error")).Once()
 
@@ -114,6 +122,8 @@ func TestConsumerHandler_ErrorScenarios(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 
 		mockRepo.AssertExpectations(t)
+		// CommitMessages не должен вызываться при ошибке БД
+		mockReader.AssertNotCalled(t, "CommitMessages", mock.Anything, mock.Anything)
 		mockReader.AssertExpectations(t)
 	})
 }

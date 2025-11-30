@@ -29,9 +29,10 @@ func main() {
 
 	//  2. Настройка Kafka Reader
 	kafkaReader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers: []string{kafkaBroker},
-		Topic:   "transactions",
-		GroupID: "transaction-savers", // Группа потребителей, чтобы Kafka отслеживал, что мы прочли.
+		Brokers:        []string{kafkaBroker},
+		Topic:          "transactions",
+		GroupID:        "transaction-savers", // Группа потребителей, чтобы Kafka отслеживал, что мы прочли.
+		CommitInterval: 0,
 	})
 	defer func() {
 		if err := kafkaReader.Close(); err != nil {

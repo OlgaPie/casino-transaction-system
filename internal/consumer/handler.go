@@ -15,7 +15,8 @@ import (
 
 // MessageReader определяет минимальный интерфейс, необходимый для чтения сообщений.
 type MessageReader interface {
-	ReadMessage(ctx context.Context) (kafka.Message, error)
+	FetchMessage(ctx context.Context) (kafka.Message, error)
+	CommitMessages(ctx context.Context, msgs ...kafka.Message) error
 }
 
 type Handler struct {
@@ -29,29 +30,39 @@ func NewHandler(reader MessageReader, repo repository.TransactionRepository) *Ha
 
 func (h *Handler) ProcessMessages(ctx context.Context) {
 	for {
-		msg, err := h.reader.ReadMessage(ctx)
+		// FetchMessage получает сообщение без автоматического коммита offset
+		msg, err := h.reader.FetchMessage(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				log.Println("Context cancelled, stopping message processing.")
 				return
 			}
-			log.Printf("could not read message: %v", err)
+			log.Printf("could not fetch message: %v", err)
 			continue
 		}
 
 		var tx models.Transaction
 		if err := json.Unmarshal(msg.Value, &tx); err != nil {
 			log.Printf("could not unmarshal message: %v. Value: %s", err, string(msg.Value))
-			continue // Пропускаем "битое" сообщение.
+			if err := h.reader.CommitMessages(ctx, msg); err != nil {
+				log.Printf("failed to commit invalid message: %v", err)
+			}
+			continue
 		}
 
 		// Валидация данных.
 		if tx.TransactionType != models.TransactionTypeBet && tx.TransactionType != models.TransactionTypeWin {
 			log.Printf("invalid transaction_type: %s for user_id: %s", tx.TransactionType, tx.UserID)
-			continue // Пропускаем невалидное сообщение
+			if err := h.reader.CommitMessages(ctx, msg); err != nil {
+				log.Printf("failed to commit invalid message: %v", err)
+			}
+			continue
 		}
 		if tx.Amount <= 0 {
 			log.Printf("invalid amount: %.2f for user_id: %s", tx.Amount, tx.UserID)
+			if err := h.reader.CommitMessages(ctx, msg); err != nil {
+				log.Printf("failed to commit invalid message: %v", err)
+			}
 			continue
 		}
 
@@ -67,6 +78,11 @@ func (h *Handler) ProcessMessages(ctx context.Context) {
 			continue
 		}
 
-		log.Printf("Successfully processed transaction for user_id: %s, amount: %.2f", tx.UserID, tx.Amount)
+		// Коммитим сообщение только после успешного сохранения в БД
+		if err := h.reader.CommitMessages(ctx, msg); err != nil {
+			log.Printf("failed to commit message after successful save: %v", err)
+		}
+
+		log.Printf("Successfully processed and committed transaction for user_id: %s, amount: %.2f", tx.UserID, tx.Amount)
 	}
 }
