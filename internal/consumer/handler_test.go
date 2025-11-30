@@ -51,7 +51,7 @@ func TestConsumerHandler_ProcessMessages(t *testing.T) {
 	testTx := models.Transaction{
 		UserID:          "test-user-consumer",
 		TransactionType: models.TransactionTypeBet,
-		Amount:          99.9,
+		Amount:          9990,
 	}
 	message, err := json.Marshal(testTx)
 	require.NoError(t, err)
@@ -132,9 +132,10 @@ func setupTestDB(ctx context.Context) (*postgres.PostgresContainer, *pgxpool.Poo
 
 	_, err = dbpool.Exec(ctx, `CREATE TABLE transactions (
         id SERIAL PRIMARY KEY,
+        transaction_id VARCHAR(255) UNIQUE NOT NULL,
         user_id VARCHAR(255) NOT NULL,
         transaction_type VARCHAR(10) NOT NULL,
-        amount NUMERIC(15, 2) NOT NULL,
+        amount BIGINT NOT NULL,
         "timestamp" TIMESTAMPTZ NOT NULL
     );`)
 	if err != nil {

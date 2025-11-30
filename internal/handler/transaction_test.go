@@ -24,7 +24,7 @@ func TestTransactionHandler_GetUserTransactions(t *testing.T) {
 
 	t.Run("successful retrieval of user transactions", func(t *testing.T) {
 		expectedTxs := []models.Transaction{
-			{ID: 1, UserID: "user123", TransactionType: "bet", Amount: 10, Timestamp: time.Now()},
+			{ID: 1, TransactionID: "test-handler-001", UserID: "user123", TransactionType: "bet", Amount: 1000, Timestamp: time.Now()},
 		}
 		mockRepo.On("GetTransactionsByUserID", mock.Anything, "user123", "").
 			Return(expectedTxs, nil).
@@ -81,8 +81,8 @@ func TestTransactionHandler_GetAllTransactions(t *testing.T) {
 
 	t.Run("successful retrieval of all transactions", func(t *testing.T) {
 		expectedTxs := []models.Transaction{
-			{ID: 1, UserID: "user1", TransactionType: "bet", Amount: 10, Timestamp: time.Now()},
-			{ID: 2, UserID: "user2", TransactionType: "win", Amount: 50, Timestamp: time.Now()},
+			{ID: 1, TransactionID: "test-handler-002", UserID: "user1", TransactionType: "bet", Amount: 1000, Timestamp: time.Now()},
+			{ID: 2, TransactionID: "test-handler-003", UserID: "user2", TransactionType: "win", Amount: 5000, Timestamp: time.Now()},
 		}
 		mockRepo.On("GetAllTransactions", mock.Anything, "").
 			Return(expectedTxs, nil).
@@ -109,7 +109,7 @@ func TestTransactionHandler_GetAllTransactions(t *testing.T) {
 
 	t.Run("successful retrieval of filtered transactions", func(t *testing.T) {
 		expectedTxs := []models.Transaction{
-			{ID: 2, UserID: "user2", TransactionType: "win", Amount: 50, Timestamp: time.Now()},
+			{ID: 2, TransactionID: "test-handler-004", UserID: "user2", TransactionType: "win", Amount: 5000, Timestamp: time.Now()},
 		}
 		mockRepo.On("GetAllTransactions", mock.Anything, "win").
 			Return(expectedTxs, nil).

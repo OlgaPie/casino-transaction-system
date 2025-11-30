@@ -47,9 +47,10 @@ func setupTestDB(ctx context.Context) (*pgxpool.Pool, func()) {
 	// Создаем таблицу
 	_, err = dbpool.Exec(ctx, `CREATE TABLE transactions (
         id SERIAL PRIMARY KEY,
+        transaction_id VARCHAR(255) UNIQUE NOT NULL,
         user_id VARCHAR(255) NOT NULL,
         transaction_type VARCHAR(10) NOT NULL,
-        amount NUMERIC(15, 2) NOT NULL,
+        amount BIGINT NOT NULL,
         "timestamp" TIMESTAMPTZ NOT NULL
     );`)
 	if err != nil {
@@ -76,9 +77,10 @@ func TestPostgresRepository(t *testing.T) {
 	// --- Тестируем SaveTransaction ---
 	t.Run("should save and retrieve a transaction", func(t *testing.T) {
 		tx := models.Transaction{
+			TransactionID:   "test-repo-001",
 			UserID:          "user123",
 			TransactionType: models.TransactionTypeBet,
-			Amount:          100.50,
+			Amount:          10050,
 			Timestamp:       time.Now(),
 		}
 
@@ -91,13 +93,13 @@ func TestPostgresRepository(t *testing.T) {
 		require.Len(t, retrieved, 1)
 		assert.Equal(t, tx.UserID, retrieved[0].UserID)
 		assert.Equal(t, tx.TransactionType, retrieved[0].TransactionType)
-		assert.InDelta(t, tx.Amount, retrieved[0].Amount, 0.01) // для float
+		assert.Equal(t, tx.Amount, retrieved[0].Amount)
 	})
 
 	// --- Тестируем фильтрацию ---
 	t.Run("should filter transactions by type", func(t *testing.T) {
-		winTx := models.Transaction{UserID: "user456", TransactionType: models.TransactionTypeWin, Amount: 200, Timestamp: time.Now()}
-		betTx := models.Transaction{UserID: "user456", TransactionType: models.TransactionTypeBet, Amount: 50, Timestamp: time.Now()}
+		winTx := models.Transaction{TransactionID: "test-repo-002", UserID: "user456", TransactionType: models.TransactionTypeWin, Amount: 20000, Timestamp: time.Now()}
+		betTx := models.Transaction{TransactionID: "test-repo-003", UserID: "user456", TransactionType: models.TransactionTypeBet, Amount: 5000, Timestamp: time.Now()}
 
 		require.NoError(t, repo.SaveTransaction(ctx, winTx))
 		require.NoError(t, repo.SaveTransaction(ctx, betTx))

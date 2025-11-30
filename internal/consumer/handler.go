@@ -2,8 +2,12 @@ package consumer
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log"
 	"time"
 
@@ -33,8 +37,8 @@ func (h *Handler) ProcessMessages(ctx context.Context) {
 		// FetchMessage получает сообщение без автоматического коммита offset
 		msg, err := h.reader.FetchMessage(ctx)
 		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				log.Println("Context cancelled, stopping message processing.")
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || err == io.EOF {
+				log.Println("Context cancelled or reader closed, stopping message processing.")
 				return
 			}
 			log.Printf("could not fetch message: %v", err)
@@ -59,11 +63,16 @@ func (h *Handler) ProcessMessages(ctx context.Context) {
 			continue
 		}
 		if tx.Amount <= 0 {
-			log.Printf("invalid amount: %.2f for user_id: %s", tx.Amount, tx.UserID)
+			log.Printf("invalid amount: %d for user_id: %s", tx.Amount, tx.UserID)
 			if err := h.reader.CommitMessages(ctx, msg); err != nil {
 				log.Printf("failed to commit invalid message: %v", err)
 			}
 			continue
+		}
+
+		if tx.TransactionID == "" {
+			tx.TransactionID = generateTransactionID(tx)
+			log.Printf("generated transaction_id: %s for user_id: %s", tx.TransactionID, tx.UserID)
 		}
 
 		// Устанавливаем время транзакции, если его нет в сообщении
@@ -83,6 +92,12 @@ func (h *Handler) ProcessMessages(ctx context.Context) {
 			log.Printf("failed to commit message after successful save: %v", err)
 		}
 
-		log.Printf("Successfully processed and committed transaction for user_id: %s, amount: %.2f", tx.UserID, tx.Amount)
+		log.Printf("Successfully processed and committed transaction for user_id: %s, amount: %d", tx.UserID, tx.Amount)
 	}
+}
+
+func generateTransactionID(tx models.Transaction) string {
+	data := fmt.Sprintf("%s:%s:%d:%d", tx.UserID, tx.TransactionType, tx.Amount, tx.Timestamp.UnixNano())
+	hash := md5.Sum([]byte(data))
+	return hex.EncodeToString(hash[:])
 }

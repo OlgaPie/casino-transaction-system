@@ -7,105 +7,111 @@ The architecture is based on microservices principles, with two main components:
 2.  **API Service**: Provides HTTP endpoints for clients to query transaction history.
 
 ## Features
-
-*   Asynchronous transaction processing via Kafka.
-*   Data persistence in a PostgreSQL database.
-*   REST API for querying transactions for all users or a specific user.
-*   Filtering transactions by type (`bet` or `win`).
-*   High test coverage (>85%) with both unit and integration tests.
-*   Fully containerized with Docker and Docker Compose for easy setup and deployment.
-
-## Tech Stack
-
-*   **Language**: Go (Golang)
-*   **Database**: PostgreSQL
-*   **Message Broker**: Apache Kafka
-*   **API**: RESTful API using the `chi` router
-*   **Containerization**: Docker & Docker Compose
-*   **Testing**: Go's native testing package, `testify`, `testcontainers-go`
-
-## Project Structure
-
-The project follows the standard Go project layout to ensure a clean separation of concerns:
-
-```text
-.
-├── cmd/
-│   ├── api/
-│   │   └── main.go
-│   └── consumer/
-│       └── main.go
-├── internal/
-│   ├── consumer/
-│   │   ├── handler.go
-│   │   ├── handler_test.go
-│   │   └── handler_unit_test.go
-│   ├── handler/
-│   │   ├── transaction.go
-│   │   └── transaction_test.go
-│   ├── models/
-│   │   └── transaction.go
-│   └── repository/
-│       ├── mocks/
-│       │   └── TransactionRepository.go
-│       ├── transaction.go
-│       └── transaction_test.go
-├── migrations/
-│   └── 001_create_transactions_table.sql
-├── .gitignore
-├── go.mod
-├── go.sum
-├── Dockerfile.api
-├── Dockerfile.consumer
-└── docker-compose.yml
-```
-## Getting Started
-
-### Prerequisites
-
-*   [Docker](https://www.docker.com/get-started) and [Docker Compose](https://docs.docker.com/compose/install/) must be installed on your system.
-*   [Go](https://golang.org/doc/install/) (v1.25) is required to run tests locally.
-*   `kcat` (or `kafkacat`) is recommended for producing test messages to Kafka. Install via `brew install kcat`.
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/OlgaPie/casino-transaction-system.git
-cd casino-transaction-system
-```
-
-### 2. Run the System
-The entire system (PostgreSQL, Kafka, Zookeeper, API, and Consumer) can be launched with a single command:
-```bash
-   docker-compose up --build
-```
-This will:
-1. Build the Docker images for the `api` and `consumer` services.
-2. Start all the necessary containers.
-3. Apply the database schema from the `migrations/` directory on the first run.
-4. Automatically create the `transactions` Kafka topic.
  
-The API service will be available at `http://localhost:8080`.
-## Usage
-
-### 1. Producing a Message to Kafka
-
-You can simulate a new transaction by sending a JSON message to the `transactions` Kafka topic.
-
-**Example using `kcat`:**
-Open a new terminal and run the following command. After running it, paste the JSON and press `Ctrl+D`.
-
-```bash
-kcat -b localhost:9092 -t transactions -P
-```
-Paste your message:
-```JSON
-{"user_id": "user-123", "transaction_type": "bet", "amount": 150.75}
-```
-You can also send a "win" transaction:
-```JSON
-{"user_id": "user-123", "transaction_type": "win", "amount": 300.00}
-```
+ *   **Asynchronous Processing**: Transactions are processed asynchronously via Kafka.
+ *   **Idempotency**: Prevents duplicate transaction processing using unique `transaction_id` and database constraints.
+ *   **Precise Monetary Handling**: Amounts are stored as integers (cents) to ensure absolute precision.
+ *   **Reliability**: Manual Kafka offset management ensures at-least-once delivery.
+ *   **Data Persistence**: PostgreSQL database for reliable storage.
+ *   **REST API**: Endpoints for querying transaction history with filtering.
+ *   **Filtering**: Transactions can be filtered by type (`bet` or `win`).
+ *   **High Test Coverage**: >85% coverage with unit and integration tests.
+ *   **Dockerized**: Fully containerized setup with Docker Compose.
+ 
+ ## Tech Stack
+ 
+ *   **Language**: Go (Golang)
+ *   **Database**: PostgreSQL
+ *   **Message Broker**: Apache Kafka
+ *   **API**: RESTful API using the `chi` router
+ *   **Containerization**: Docker & Docker Compose
+ *   **Testing**: `testify`, `testcontainers-go`
+ 
+ ## Project Structure
+ 
+ The project follows the standard Go project layout to ensure a clean separation of concerns:
+ 
+ ```text
+ .
+ ├── cmd/
+ │   ├── api/
+ │   │   └── main.go
+ │   └── consumer/
+ │       └── main.go
+ ├── internal/
+ │   ├── consumer/
+ │   │   ├── handler.go
+ │   │   ├── handler_test.go
+ │   │   └── handler_unit_test.go
+ │   ├── handler/
+ │   │   ├── transaction.go
+ │   │   └── transaction_test.go
+ │   ├── models/
+ │   │   └── transaction.go
+ │   └── repository/
+ │       ├── mocks/
+ │       │   └── TransactionRepository.go
+ │       ├── transaction.go
+ │       └── transaction_test.go
+ ├── migrations/
+ │   ├── 001_create_transactions_table.sql
+ │   └── 002_add_transaction_id.sql
+ ├── .gitignore
+ ├── go.mod
+ ├── go.sum
+ ├── Dockerfile.api
+ ├── Dockerfile.consumer
+ └── docker-compose.yml
+ ```
+ ## Getting Started
+ 
+ ### Prerequisites
+ 
+ *   [Docker](https://www.docker.com/get-started) and [Docker Compose](https://docs.docker.com/compose/install/) must be installed on your system.
+ *   [Go](https://golang.org/doc/install/) (v1.25) is required to run tests locally.
+ *   `kcat` (or `kafkacat`) is recommended for producing test messages to Kafka. Install via `brew install kcat`.
+ 
+ ### 1. Clone the Repository
+ 
+ ```bash
+ git clone https://github.com/OlgaPie/casino-transaction-system.git
+ cd casino-transaction-system
+ ```
+ 
+ ### 2. Run the System
+ The entire system (PostgreSQL, Kafka, Zookeeper, API, and Consumer) can be launched with a single command:
+ ```bash
+    docker-compose up --build
+ ```
+ This will:
+ 1. Build the Docker images for the `api` and `consumer` services.
+ 2. Start all the necessary containers.
+ 3. Apply the database schema from the `migrations/` directory on the first run.
+ 4. Automatically create the `transactions` Kafka topic.
+  
+ The API service will be available at `http://localhost:8080`.
+ ## Usage
+ 
+ ### 1. Producing a Message to Kafka
+ 
+ You can simulate a new transaction by sending a JSON message to the `transactions` Kafka topic.
+ 
+ > **Note**: `amount` is specified in **cents** (e.g., 15075 = $150.75). `transaction_id` is optional; if omitted, it will be generated automatically.
+ 
+ **Example using `kcat`:**
+ Open a new terminal and run the following command. After running it, paste the JSON and press `Ctrl+D`.
+ 
+ ```bash
+ kcat -b localhost:9092 -t transactions -P
+ ```
+ Paste your message:
+ ```JSON
+ {"transaction_id": "tx-1001", "user_id": "user-123", "transaction_type": "bet", "amount": 15075}
+ ```
+ You can also send a "win" transaction:
+ ```JSON
+ {"transaction_id": "tx-1002", "user_id": "user-123", "transaction_type": "win", "amount": 30000}
+ ```
 Check the logs from the `consumer` service (`docker-compose logs -f consumer`) to see that the message has been processed and saved.
 ### 2. Querying the API
    Use `curl` or any API client (like Postman) to query the transaction data.
@@ -146,8 +152,8 @@ Check the logs from the `consumer` service (`docker-compose logs -f consumer`) t
 #### A Note on Coverage Metrics:
 The test coverage report provides several metrics. The most important one is the coverage for the core business logic located in the `internal` package.
 
-*  **Business Logic Coverage (`internal` package): ~85.6%**
-    - `internal/consumer`: **81.8%**
+*  **Business Logic Coverage (`internal` package): ~86.5%**
+    - `internal/consumer`: **84.6%**
     - `internal/handler`: **91.3%**
     - `internal/repository`: **83.7%**
 

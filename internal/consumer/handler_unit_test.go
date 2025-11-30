@@ -59,7 +59,7 @@ func TestConsumerHandler_ErrorScenarios(t *testing.T) {
 		mockRepo := new(mocks.TransactionRepository)
 		ctx, cancel := context.WithCancel(context.Background())
 
-		tx := models.Transaction{UserID: "u1", TransactionType: "refund", Amount: 100}
+		tx := models.Transaction{TransactionID: "test-001", UserID: "u1", TransactionType: "refund", Amount: 10000}
 		msgBytes, _ := json.Marshal(tx)
 		message := kafka.Message{Value: msgBytes}
 		mockReader.On("FetchMessage", mock.Anything).Return(message, nil).Once()
@@ -82,7 +82,7 @@ func TestConsumerHandler_ErrorScenarios(t *testing.T) {
 		mockRepo := new(mocks.TransactionRepository)
 		ctx, cancel := context.WithCancel(context.Background())
 
-		tx := models.Transaction{UserID: "u1", TransactionType: "bet", Amount: -50}
+		tx := models.Transaction{TransactionID: "test-002", UserID: "u1", TransactionType: "bet", Amount: -5000}
 		msgBytes, _ := json.Marshal(tx)
 		message := kafka.Message{Value: msgBytes}
 		mockReader.On("FetchMessage", mock.Anything).Return(message, nil).Once()
@@ -105,7 +105,7 @@ func TestConsumerHandler_ErrorScenarios(t *testing.T) {
 		mockRepo := new(mocks.TransactionRepository)
 		ctx, cancel := context.WithCancel(context.Background())
 
-		tx := models.Transaction{UserID: "u1", TransactionType: "win", Amount: 200}
+		tx := models.Transaction{TransactionID: "test-003", UserID: "u1", TransactionType: "win", Amount: 20000}
 		msgBytes, _ := json.Marshal(tx)
 		message := kafka.Message{Value: msgBytes}
 		mockReader.On("FetchMessage", mock.Anything).Return(message, nil).Once()
