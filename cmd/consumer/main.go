@@ -11,27 +11,32 @@ import (
 	"github.com/OlgaPie/casino-transaction-system/internal/repository"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/segmentio/kafka-go"
+	"golang.org/x/sync/errgroup"
 )
 
 func main() {
 	log.Println("Starting consumer...")
 
+	// 1. Контекст с отменой по сигналу
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	kafkaBroker := os.Getenv("KAFKA_BROKER")
 	postgresDSN := os.Getenv("POSTGRES_DSN")
 
-	//  1. Подключение к PostgreSQL
-	dbpool, err := pgxpool.New(context.Background(), postgresDSN)
+	// 2. БД
+	dbpool, err := pgxpool.New(ctx, postgresDSN)
 	if err != nil {
 		log.Fatalf("Unable to connect to database: %v\n", err)
 	}
 	defer dbpool.Close()
 	log.Println("Connected to PostgreSQL")
 
-	//  2. Настройка Kafka Reader
+	// 3. Kafka
 	kafkaReader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:        []string{kafkaBroker},
 		Topic:          "transactions",
-		GroupID:        "transaction-savers", // Группа потребителей, чтобы Kafka отслеживал, что мы прочли.
+		GroupID:        "transaction-savers",
 		CommitInterval: 0,
 	})
 	defer func() {
@@ -41,21 +46,26 @@ func main() {
 	}()
 	log.Println("Connected to Kafka")
 
-	//  3. Инициализация зависимостей
-	// Создаем экземпляр репозитория, передавая ему пул соединений с БД.
+	// 4. Зависимости
 	txRepo := repository.NewPostgresRepository(dbpool)
-	// Создаем обработчик сообщений, передавая ему ридер Kafka и репозиторий.
 	consumerHandler := consumer.NewHandler(kafkaReader, txRepo)
 
-	//  4. Запуск и грациозное завершение
-	ctx, cancel := context.WithCancel(context.Background())
-	go consumerHandler.ProcessMessages(ctx)
+	// 5. Запуск с errgroup
+	g := new(errgroup.Group)
 
-	// Ждем сигнала о завершении
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	g.Go(func() error {
+		consumerHandler.ProcessMessages(ctx)
+		log.Println("Consumer loop finished")
+		return nil
+	})
+
+	// 6. Ожидание сигнала на завершение
+	<-ctx.Done()
+	stop()
 
 	log.Println("Shutting down consumer...")
-	cancel() // Отправляем сигнал на завершение в наш обработчик
+
+	_ = g.Wait()
+
+	log.Println("Consumer exited properly")
 }

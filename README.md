@@ -56,13 +56,37 @@ The architecture is based on microservices principles, with two main components:
  ├── migrations/
  │   ├── 001_create_transactions_table.sql
  │   └── 002_add_transaction_id.sql
+ ├── .env.example
  ├── .gitignore
  ├── go.mod
  ├── go.sum
+ ├── Makefile
  ├── Dockerfile.api
  ├── Dockerfile.consumer
  └── docker-compose.yml
  ```
+
+## Development Tools
+
+### Makefile
+
+The project includes a `Makefile` for common development tasks:
+
+```bash
+make help          # Show all available commands
+make build         # Build API and Consumer binaries  
+make test          # Run all tests
+make coverage      # Generate HTML coverage report
+make run-docker    # Start all services with Docker Compose
+make clean         # Clean artifacts and stop containers
+```
+
+**Quick start for development:**
+```bash
+make build         # Build both services locally
+make test          # Run all tests
+make coverage      # Check test coverage
+```
  ## Getting Started
  
  ### Prerequisites
@@ -70,6 +94,7 @@ The architecture is based on microservices principles, with two main components:
  *   [Docker](https://www.docker.com/get-started) and [Docker Compose](https://docs.docker.com/compose/install/) must be installed on your system.
  *   [Go](https://golang.org/doc/install/) (v1.25) is required to run tests locally.
  *   `kcat` (or `kafkacat`) is recommended for producing test messages to Kafka. Install via `brew install kcat`.
+ *   (Optional) Copy `.env.example` to `.env` for local development configuration.
  
  ### 1. Clone the Repository
  
@@ -135,11 +160,19 @@ Check the logs from the `consumer` service (`docker-compose logs -f consumer`) t
 ```bash
    curl http://localhost:8080/transactions?type=bet
 ```  
-##   Running Tests
-   The project includes both unit tests (using mocks) and integration tests (using `testcontainers-go` to spin up a real database).
-   To run all tests, execute the following command in the project root:
+## Running Tests
+
+The project includes both unit tests (using mocks) and integration tests (using `testcontainers-go` to spin up a real database).
+
+**Using Makefile (recommended):**
 ```bash
-   go test -v ./...
+make test          # Run all tests
+make coverage      # Generate HTML coverage report
+```
+
+**Using Go directly:**
+```bash
+go test -v ./...
 ```
 ###   Test Coverage
    To generate an HTML report of the test coverage:
@@ -152,8 +185,8 @@ Check the logs from the `consumer` service (`docker-compose logs -f consumer`) t
 #### A Note on Coverage Metrics:
 The test coverage report provides several metrics. The most important one is the coverage for the core business logic located in the `internal` package.
 
-*  **Business Logic Coverage (`internal` package): ~ 87.4%**
-    - `internal/consumer`: **87.2%**
+*  **Business Logic Coverage (`internal` package): ~ 86.5%**
+    - `internal/consumer`: **84.6%**
     - `internal/handler`: **91.3%**
     - `internal/repository`: **83.7%**
 
@@ -162,10 +195,12 @@ The test coverage report provides several metrics. The most important one is the
 *  **Overall Project Coverage**
    Packages like `cmd` (application entrypoints), `models` (data structures), and `mocks` (generated code) are intentionally excluded from coverage metrics as per standard Go testing practices. Therefore, the `internal` package coverage is the true measure of the project's test quality.
 
-##  Further Improvements
-   While this project fulfills the requirements of the test, here are some potential improvements for a production-grade system:
+## Further Improvements
+
+While this project fulfills the requirements of the test, here are some potential improvements for a production-grade system:
+
 *  **Configuration Management**: Move configuration values (e.g., database DSN, Kafka brokers) out of environment variables and into a structured config file (e.g., YAML) loaded by a library like Viper.
 *  **Error Handling and Retries**: Implement a more robust error handling strategy in the consumer, such as a retry mechanism with exponential backoff or a Dead Letter Queue (DLQ) for messages that repeatedly fail processing.
 *  **Pagination**: Add pagination (`limit` and `offset` query parameters) to the API endpoints that return lists of transactions to handle large datasets efficiently.
 *  **Structured Logging**: Use a structured logging library (e.g., `slog`, `zerolog`) to produce machine-readable JSON logs, which are easier to parse and analyze in a production environment.
-*  **Graceful Shutdown**: Enhance the graceful shutdown logic for both the API and consumer to ensure all in-flight requests and messages are processed before the application exits.
+*  **Monitoring and Metrics**: Add Prometheus metrics and health endpoints for production monitoring.
