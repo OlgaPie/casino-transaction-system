@@ -41,8 +41,8 @@ The architecture is based on microservices principles, with two main components:
  ├── internal/
  │   ├── consumer/
  │   │   ├── handler.go
- │   │   ├── handler_test.go
- │   │   └── handler_unit_test.go
+ │   │   ├── handler_integration_test.go
+ │   │   └── handler_test.go
  │   ├── handler/
  │   │   ├── transaction.go
  │   │   └── transaction_test.go
@@ -152,8 +152,8 @@ Check the logs from the `consumer` service (`docker-compose logs -f consumer`) t
 #### A Note on Coverage Metrics:
 The test coverage report provides several metrics. The most important one is the coverage for the core business logic located in the `internal` package.
 
-*  **Business Logic Coverage (`internal` package): ~86.5%**
-    - `internal/consumer`: **84.6%**
+*  **Business Logic Coverage (`internal` package): ~ 87.4%**
+    - `internal/consumer`: **87.2%**
     - `internal/handler`: **91.3%**
     - `internal/repository`: **83.7%**
 

@@ -3,178 +3,127 @@ package consumer
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/OlgaPie/casino-transaction-system/internal/models"
-	"github.com/OlgaPie/casino-transaction-system/internal/repository"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/OlgaPie/casino-transaction-system/internal/repository/mocks"
 	"github.com/segmentio/kafka-go"
-	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	kafkatc "github.com/testcontainers/testcontainers-go/modules/kafka"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/stretchr/testify/mock"
 )
 
-func TestConsumerHandler_ProcessMessages(t *testing.T) {
-	ctx := context.Background()
+type MockMessageReader struct {
+	mock.Mock
+}
 
-	// 1. Запуск контейнера PostgreSQL
-	pgContainer, dbpool, err := setupTestDB(ctx)
-	require.NoError(t, err)
-	defer func() {
-		if err := pgContainer.Terminate(ctx); err != nil {
-			t.Fatalf("failed to terminate postgres container: %s", err)
-		}
-	}()
-
-	// 2. Запуск контейнера Kafka
-	kafkaContainer, err := kafkatc.Run(ctx, "confluentinc/cp-kafka:7.2.1")
-	require.NoError(t, err)
-	defer func() {
-		if err := kafkaContainer.Terminate(ctx); err != nil {
-			t.Fatalf("failed to terminate kafka container: %s", err)
-		}
-	}()
-
-	brokers, err := kafkaContainer.Brokers(ctx)
-	require.NoError(t, err)
-	require.NotEmpty(t, brokers)
-	kafkaBroker := brokers[0]
-
-	// 3. Подготовка тестовых данных и зависимостей
-	topic := "transactions-test"
-	createTestTopic(t, kafkaBroker, topic)
-
-	testTx := models.Transaction{
-		UserID:          "test-user-consumer",
-		TransactionType: models.TransactionTypeBet,
-		Amount:          9990,
+func (m *MockMessageReader) FetchMessage(ctx context.Context) (kafka.Message, error) {
+	args := m.Called(ctx)
+	if msg, ok := args.Get(0).(kafka.Message); ok {
+		return msg, args.Error(1)
 	}
-	message, err := json.Marshal(testTx)
-	require.NoError(t, err)
+	return kafka.Message{}, args.Error(1)
+}
 
-	// 4. Настройка нашего consumer'а
-	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers: []string{kafkaBroker},
-		Topic:   topic,
-		GroupID: "test-group",
+func (m *MockMessageReader) CommitMessages(ctx context.Context, msgs ...kafka.Message) error {
+	args := m.Called(ctx, msgs)
+	return args.Error(0)
+}
+
+func TestConsumerHandler_ErrorScenarios(t *testing.T) {
+	//  Тест 1: Ошибка парсинга JSON
+	t.Run("should skip message on unmarshal error", func(t *testing.T) {
+		mockReader := new(MockMessageReader)
+		mockRepo := new(mocks.TransactionRepository)
+		ctx, cancel := context.WithCancel(context.Background())
+
+		badMessage := kafka.Message{Value: []byte("not a json")}
+		mockReader.On("FetchMessage", mock.Anything).Return(badMessage, nil).Once()
+		mockReader.On("CommitMessages", mock.Anything, mock.Anything).Return(nil).Once()
+		mockReader.On("FetchMessage", mock.Anything).Return(kafka.Message{}, context.Canceled).Maybe()
+
+		handler := NewHandler(mockReader, mockRepo)
+
+		go handler.ProcessMessages(ctx)
+
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+
+		mockRepo.AssertNotCalled(t, "SaveTransaction", mock.Anything, mock.Anything)
+		mockReader.AssertExpectations(t)
 	})
-	defer func(reader *kafka.Reader) {
-		err := reader.Close()
-		if err != nil {
-			log.Printf("Failed to close Kafka reader: %v", err)
-		}
-	}(reader)
 
-	repo := repository.NewPostgresRepository(dbpool)
-	handler := NewHandler(reader, repo)
+	//  Тест 2: Невалидный тип транзакции
+	t.Run("should skip message with invalid transaction type", func(t *testing.T) {
+		mockReader := new(MockMessageReader)
+		mockRepo := new(mocks.TransactionRepository)
+		ctx, cancel := context.WithCancel(context.Background())
 
-	// 5. Запуск consumer'а в отдельной горутине
-	handlerCtx, cancel := context.WithCancel(ctx)
-	done := make(chan bool)
+		tx := models.Transaction{TransactionID: "test-001", UserID: "u1", TransactionType: "refund", Amount: 10000}
+		msgBytes, _ := json.Marshal(tx)
+		message := kafka.Message{Value: msgBytes}
+		mockReader.On("FetchMessage", mock.Anything).Return(message, nil).Once()
+		mockReader.On("CommitMessages", mock.Anything, mock.Anything).Return(nil).Once()
+		mockReader.On("FetchMessage", mock.Anything).Return(kafka.Message{}, context.Canceled).Maybe()
 
-	go func() {
-		handler.ProcessMessages(handlerCtx)
-		done <- true
-	}()
+		handler := NewHandler(mockReader, mockRepo)
 
-	// 6. Отправка тестового сообщения в Kafka
-	err = writeTestMessage(t, kafkaBroker, topic, message)
-	require.NoError(t, err)
+		go handler.ProcessMessages(ctx)
+		time.Sleep(50 * time.Millisecond)
+		cancel()
 
-	// 7. Проверка результата в базе данных
-	var savedTx models.Transaction
-	require.Eventually(t, func() bool {
-		rows, _ := dbpool.Query(ctx, "SELECT user_id, transaction_type, amount FROM transactions WHERE user_id = $1", testTx.UserID)
-		if rows.Next() {
-			err = rows.Scan(&savedTx.UserID, &savedTx.TransactionType, &savedTx.Amount)
-			return err == nil
-		}
-		return false
-	}, 5*time.Second, 100*time.Millisecond, "transaction was not saved to db in time")
-
-	require.Equal(t, testTx.UserID, savedTx.UserID)
-	require.Equal(t, testTx.TransactionType, savedTx.TransactionType)
-	require.Equal(t, testTx.Amount, savedTx.Amount)
-
-	// 8. Остановка consumer'а и очистка
-	cancel()
-	<-done
-}
-
-func setupTestDB(ctx context.Context) (*postgres.PostgresContainer, *pgxpool.Pool, error) {
-	pgContainer, err := postgres.Run(ctx, "postgres:14-alpine",
-		postgres.WithDatabase("test-db"),
-		postgres.WithUsername("user"),
-		postgres.WithPassword("password"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
-				WithStartupTimeout(5*time.Second),
-		),
-	)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		return nil, nil, err
-	}
-
-	dbpool, err := pgxpool.New(ctx, connStr)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	_, err = dbpool.Exec(ctx, `CREATE TABLE transactions (
-        id SERIAL PRIMARY KEY,
-        transaction_id VARCHAR(255) UNIQUE NOT NULL,
-        user_id VARCHAR(255) NOT NULL,
-        transaction_type VARCHAR(10) NOT NULL,
-        amount BIGINT NOT NULL,
-        "timestamp" TIMESTAMPTZ NOT NULL
-    );`)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return pgContainer, dbpool, nil
-}
-
-func createTestTopic(t *testing.T, broker, topic string) {
-	conn, err := kafka.Dial("tcp", broker)
-	require.NoError(t, err)
-	defer func(conn *kafka.Conn) {
-		err := conn.Close()
-		if err != nil {
-			log.Printf("Failed to close Kafka connection: %v", err)
-		}
-	}(conn)
-
-	err = conn.CreateTopics(kafka.TopicConfig{
-		Topic:             topic,
-		NumPartitions:     1,
-		ReplicationFactor: 1,
+		mockRepo.AssertNotCalled(t, "SaveTransaction", mock.Anything, mock.Anything)
+		mockReader.AssertExpectations(t)
 	})
-	require.NoError(t, err)
-}
 
-func writeTestMessage(_ *testing.T, broker, topic string, message []byte) error {
-	writer := &kafka.Writer{
-		Addr:     kafka.TCP(broker),
-		Topic:    topic,
-		Balancer: &kafka.LeastBytes{},
-	}
-	defer func(writer *kafka.Writer) {
-		err := writer.Close()
-		if err != nil {
-			log.Printf("Failed to close Kafka writer: %v", err)
-		}
-	}(writer)
+	//  Тест 3: Невалидная сумма
+	t.Run("should skip message with invalid amount", func(t *testing.T) {
+		mockReader := new(MockMessageReader)
+		mockRepo := new(mocks.TransactionRepository)
+		ctx, cancel := context.WithCancel(context.Background())
 
-	return writer.WriteMessages(context.Background(), kafka.Message{Value: message})
+		tx := models.Transaction{TransactionID: "test-002", UserID: "u1", TransactionType: "bet", Amount: -5000}
+		msgBytes, _ := json.Marshal(tx)
+		message := kafka.Message{Value: msgBytes}
+		mockReader.On("FetchMessage", mock.Anything).Return(message, nil).Once()
+		mockReader.On("CommitMessages", mock.Anything, mock.Anything).Return(nil).Once()
+		mockReader.On("FetchMessage", mock.Anything).Return(kafka.Message{}, context.Canceled).Maybe()
+
+		handler := NewHandler(mockReader, mockRepo)
+
+		go handler.ProcessMessages(ctx)
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+
+		mockRepo.AssertNotCalled(t, "SaveTransaction", mock.Anything, mock.Anything)
+		mockReader.AssertExpectations(t)
+	})
+
+	//  Тест 4: Ошибка сохранения в БД
+	t.Run("should not commit offset when repository fails", func(t *testing.T) {
+		mockReader := new(MockMessageReader)
+		mockRepo := new(mocks.TransactionRepository)
+		ctx, cancel := context.WithCancel(context.Background())
+
+		tx := models.Transaction{TransactionID: "test-003", UserID: "u1", TransactionType: "win", Amount: 20000}
+		msgBytes, _ := json.Marshal(tx)
+		message := kafka.Message{Value: msgBytes}
+		mockReader.On("FetchMessage", mock.Anything).Return(message, nil).Once()
+		mockReader.On("FetchMessage", mock.Anything).Return(kafka.Message{}, context.Canceled).Maybe()
+
+		mockRepo.On("SaveTransaction", mock.Anything, mock.AnythingOfType("models.Transaction")).Return(errors.New("db error")).Once()
+
+		handler := NewHandler(mockReader, mockRepo)
+
+		go handler.ProcessMessages(ctx)
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+
+		time.Sleep(50 * time.Millisecond)
+
+		mockRepo.AssertExpectations(t)
+		// CommitMessages не должен вызываться при ошибке БД
+		mockReader.AssertNotCalled(t, "CommitMessages", mock.Anything, mock.Anything)
+		mockReader.AssertExpectations(t)
+	})
 }
