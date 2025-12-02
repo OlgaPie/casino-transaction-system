@@ -54,8 +54,7 @@ The architecture is based on microservices principles, with two main components:
  │       ├── transaction.go
  │       └── transaction_test.go
  ├── migrations/
- │   ├── 001_create_transactions_table.sql
- │   └── 002_add_transaction_id.sql
+ │   └── 001_create_transactions_table.sql
  ├── .env.example
  ├── .gitignore
  ├── go.mod
