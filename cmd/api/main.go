@@ -21,10 +21,9 @@ import (
 func main() {
 	log.Println("Starting API server...")
 
-	// 1. Создаем главный контекст приложения
-	// Он будет отменен, когда мы получим сигнал SIGINT или SIGTERM.
+	// Контекст завершения приложения
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop() // defer stop() гарантирует, что ресурсы, связанные с NotifyContext, будут освобождены.
+	defer stop()
 
 	postgresDSN := os.Getenv("POSTGRES_DSN")
 
@@ -45,31 +44,46 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	// Определяем маршруты (endpoints).
+	// Health endpoints
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	r.Get("/ready", func(w http.ResponseWriter, r *http.Request) {
+		if err := dbpool.Ping(r.Context()); err != nil {
+			http.Error(w, "Database not ready", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// API endpoints
 	r.Get("/transactions", txHandler.GetAllTransactions)
 	r.Get("/users/{userID}/transactions", txHandler.GetUserTransactions)
 
-	// 5. Настройка и запуск сервера
+	// Порт из окружения
+	port := os.Getenv("API_PORT")
+	if port == "" {
+		port = "8080"
+	}
+
 	srv := &http.Server{
-		Addr:    ":8080",
+		Addr:    ":" + port,
 		Handler: r,
 	}
 
+	// Запуск сервера
 	go func() {
-		log.Println("API server is listening on :8080")
+		log.Printf("API server is listening on :%s\n", port)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("Failed to start server: %v", err)
 		}
 	}()
 
-	// 6. Ожидание сигнала на завершение
+	// Ожидание сигнала завершения
 	<-ctx.Done()
-
-	// Восстанавливаем исходный сигнал, чтобы избежать утечек.
-	stop()
 	log.Println("Shutting down server...")
 
-	// 7. Грациозное завершение сервера
+	// Graceful shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

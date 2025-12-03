@@ -17,25 +17,29 @@ import (
 func main() {
 	log.Println("Starting consumer...")
 
-	// 1. Контекст с отменой по сигналу
+	// 1. Контекст с автоматической отменой по сигналу
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	kafkaBroker := os.Getenv("KAFKA_BROKER")
 	postgresDSN := os.Getenv("POSTGRES_DSN")
+	kafkaBroker := os.Getenv("KAFKA_BROKER")
+	kafkaTopic := os.Getenv("KAFKA_TOPIC")
+	if kafkaTopic == "" {
+		kafkaTopic = "transactions"
+	}
 
-	// 2. БД
+	// 2. Подключение к PostgreSQL
 	dbpool, err := pgxpool.New(ctx, postgresDSN)
 	if err != nil {
-		log.Fatalf("Unable to connect to database: %v\n", err)
+		log.Fatalf("Unable to connect to database: %v", err)
 	}
 	defer dbpool.Close()
 	log.Println("Connected to PostgreSQL")
 
-	// 3. Kafka
+	// 3. Инициализация Kafka reader
 	kafkaReader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:        []string{kafkaBroker},
-		Topic:          "transactions",
+		Topic:          kafkaTopic,
 		GroupID:        "transaction-savers",
 		CommitInterval: 0,
 	})
@@ -52,20 +56,19 @@ func main() {
 
 	// 5. Запуск с errgroup
 	g := new(errgroup.Group)
-
 	g.Go(func() error {
 		consumerHandler.ProcessMessages(ctx)
-		log.Println("Consumer loop finished")
 		return nil
 	})
 
 	// 6. Ожидание сигнала на завершение
 	<-ctx.Done()
+	log.Println("Shutting down consumer gracefully...")
 	stop()
 
-	log.Println("Shutting down consumer...")
-
-	_ = g.Wait()
+	if err := g.Wait(); err != nil {
+		log.Printf("Error in consumer goroutine: %v", err)
+	}
 
 	log.Println("Consumer exited properly")
 }

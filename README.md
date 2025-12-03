@@ -184,10 +184,10 @@ go test -v ./...
 #### A Note on Coverage Metrics:
 The test coverage report provides several metrics. The most important one is the coverage for the core business logic located in the `internal` package.
 
-*  **Business Logic Coverage (`internal` package): ~ 86.5%**
-    - `internal/consumer`: **84.6%**
+*  **Business Logic Coverage (`internal` package): ~ 87.5%**
+    - `internal/consumer`: **87.2%**
     - `internal/handler`: **91.3%**
-    - `internal/repository`: **83.7%**
+    - `internal/repository`: **84.1%**
 
    This is the key metric to evaluate. It reflects comprehensive test coverage of all handlers, consumer logic, and repository methods. The achieved coverage successfully exceeds the >85% requirement specified in the test assignment.
 

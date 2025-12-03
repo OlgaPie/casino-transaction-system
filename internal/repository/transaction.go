@@ -46,13 +46,15 @@ func (r *postgresRepository) GetTransactionsByUserID(ctx context.Context, userID
 		args = append(args, txType)
 	}
 
+	baseSQL += ` ORDER BY "timestamp" DESC`
+
 	rows, err := r.db.Query(ctx, baseSQL, args...)
 	if err != nil {
 		return nil, fmt.Errorf("could not query transactions: %w", err)
 	}
 	defer rows.Close()
 
-	var transactions []models.Transaction
+	transactions := make([]models.Transaction, 0)
 	for rows.Next() {
 		var tx models.Transaction
 		if err := rows.Scan(&tx.ID, &tx.TransactionID, &tx.UserID, &tx.TransactionType, &tx.Amount, &tx.Timestamp); err != nil {
@@ -85,7 +87,7 @@ func (r *postgresRepository) GetAllTransactions(ctx context.Context, txType stri
 	}
 	defer rows.Close()
 
-	var transactions []models.Transaction
+	transactions := make([]models.Transaction, 0)
 	for rows.Next() {
 		var tx models.Transaction
 		if err := rows.Scan(&tx.ID, &tx.TransactionID, &tx.UserID, &tx.TransactionType, &tx.Amount, &tx.Timestamp); err != nil {

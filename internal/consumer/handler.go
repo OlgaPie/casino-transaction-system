@@ -2,7 +2,7 @@ package consumer
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -70,16 +70,15 @@ func (h *Handler) ProcessMessages(ctx context.Context) {
 			continue
 		}
 
-		if tx.TransactionID == "" {
-			tx.TransactionID = generateTransactionID(tx)
-			log.Printf("generated transaction_id: %s for user_id: %s", tx.TransactionID, tx.UserID)
-		}
-
 		// Устанавливаем время транзакции, если его нет в сообщении
 		if tx.Timestamp.IsZero() {
 			tx.Timestamp = time.Now()
 		}
 
+		if tx.TransactionID == "" {
+			tx.TransactionID = generateTransactionID(tx)
+			log.Printf("generated transaction_id: %s for user_id: %s", tx.TransactionID, tx.UserID)
+		}
 		if err := h.repo.SaveTransaction(ctx, tx); err != nil {
 			log.Printf("could not save transaction for user %s: %v", tx.UserID, err)
 			// В реальном проекте здесь может быть логика повторных попыток или
@@ -98,6 +97,6 @@ func (h *Handler) ProcessMessages(ctx context.Context) {
 
 func generateTransactionID(tx models.Transaction) string {
 	data := fmt.Sprintf("%s:%s:%d:%d", tx.UserID, tx.TransactionType, tx.Amount, tx.Timestamp.UnixNano())
-	hash := md5.Sum([]byte(data))
+	hash := sha256.Sum256([]byte(data))
 	return hex.EncodeToString(hash[:])
 }
